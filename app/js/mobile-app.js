@@ -5,8 +5,8 @@
     var APP_VERSION = "1.7.12";
     var DOWNLOAD_CONFIG = {
         primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
+        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main',
+        apkPath: '/Childhood-Games.apk'
     };
     var GAMES = [
         { name: '超级玛丽', file: 'Super Mario Bros. (JU) (PRG0) [!].nes', icon: '🍄' },
