@@ -1,23 +1,13 @@
 /**
- * 移动端应用 v1.7.9
+ * 移动端应用 v1.7.12
  */
-$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
+(function() {
+    var APP_VERSION = "1.7.12";
     var DOWNLOAD_CONFIG = {
         primaryDomain: 'https://onlyforus.online',
         fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
         apkPath: '/classic-fc-games.apk'
     };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    var APP_VERSION = "1.7.11";
     var GAMES = [
         { name: '超级玛丽', file: 'Super Mario Bros. (JU) (PRG0) [!].nes', icon: '🍄' },
         { name: '魂斗罗', file: 'hun.nes', icon: '🔫' },
@@ -50,14 +40,17 @@ $1
     var gameHeaderTimer = null;
     var onlinePlayerId = null;
     var onlineRoomId = null;
-    var headerTimeout = null;
     var voiceStream = null;
     var voicePeer = null;
     var pendingVoiceCandidates = [];
     var roomListRefreshTimer = null;
     var roomListRefreshPending = false;
+    var remoteAudioMuted = false;
+    var inputFlushTimer = null;
+    var pendingNetInputs = [];
+    var lastNetInput = {};
+    var layoutRaf = 0;
 
-    // 设备ID
     function getDeviceId() {
         var id = localStorage.getItem('device-id');
         if (!id) {
@@ -68,7 +61,6 @@ $1
     }
     var DEVICE_ID = getDeviceId();
 
-    // 消息提示
     function showMessage(text, type) {
         type = type || 'info';
         var icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
@@ -76,25 +68,9 @@ $1
         msg.className = 'el-message el-message--' + type;
         msg.innerHTML = '<span class="el-message-icon">' + icons[type] + '</span><span>' + text + '</span>';
         document.body.appendChild(msg);
-        setTimeout$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    } msg.remove(); }, 2500);
+        setTimeout(function() { msg.remove(); }, 2500);
     }
 
-    // 初始化
     document.addEventListener('DOMContentLoaded', function() {
         initDesktopControls();
         initGameGrid();
@@ -102,6 +78,7 @@ $1
         initDpad();
         initOnline();
         initBgm();
+        initScreenLayout();
     });
 
     function initDesktopControls() {
@@ -109,11 +86,11 @@ $1
         document.documentElement.classList.add('desktop-app');
         var keyMap = {
             w: 'KEY_UP', s: 'KEY_DOWN', a: 'KEY_LEFT', d: 'KEY_RIGHT',
-j: 'KEY_A', k: 'KEY_B',
-u: 'KEY_SELECT', i: 'KEY_START'
+            j: 'KEY_A', k: 'KEY_B',
+            u: 'KEY_SELECT', i: 'KEY_START'
         };
         function handleKey(event, value) {
-            if (!document.getElementById('gamePage')?.classList.contains('active')) return;
+            if (!document.getElementById('gamePage').classList.contains('active')) return;
             if (event.target && /input|textarea|select/i.test(event.target.tagName)) return;
             var keyName = keyMap[String(event.key || '').toLowerCase()];
             if (!keyName) return;
@@ -141,15 +118,13 @@ u: 'KEY_SELECT', i: 'KEY_START'
     }
 
     function initEvents() {
-        // 游戏控制
         bind('backBtn', goBack);
         bind('pauseBtn', togglePause);
         bind('soundBtn', toggleSound);
         bind('resumeBtn', resumeGame);
         bind('restartBtn', restartGame);
         bind('exitBtn', goBack);
-        
-        // 联机
+
         bind('confirmNicknameBtn', confirmNickname);
         bind('nicknameCancelBtn', function() { hide('nicknameDialog'); });
         bind('lobbyBackBtn', function() { showPage('gameSelectPage'); });
@@ -162,6 +137,8 @@ u: 'KEY_SELECT', i: 'KEY_START'
         bind('chatSendBtn', sendChat);
         bind('voiceChatBtn', toggleVoiceChat);
         bind('gameVoiceBtn', toggleVoiceChat);
+        bind('gameMicBtn', toggleVoiceChat);
+        bind('gameSpkBtn', toggleSpeaker);
         bind('changeNicknameBtn', showNickname);
         bind('aboutBtn', showAbout);
 
@@ -171,8 +148,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
                 if (e.clientY <= 80) showGameHeader();
             }, true);
         }
-        
-        // Tab切换
+
         document.querySelectorAll('.tab-item').forEach(function(tab) {
             tab.onclick = function() {
                 var page = this.dataset.page;
@@ -183,23 +159,24 @@ u: 'KEY_SELECT', i: 'KEY_START'
                 showPage(page);
             };
         });
-        
-        // 联机标签切换
+
         document.querySelectorAll('.online-tab').forEach(function(tab) {
             tab.onclick = function() {
                 document.querySelectorAll('.online-tab').forEach(function(t) { t.classList.remove('active'); });
                 document.querySelectorAll('.online-panel').forEach(function(p) { p.classList.remove('active'); });
                 this.classList.add('active');
-                var id = this.dataset.tab === 'roomList' ? 'roomListPanel' : 
+                var id = this.dataset.tab === 'roomList' ? 'roomListPanel' :
                           this.dataset.tab === 'createRoom' ? 'createRoomPanel' : 'joinRoomPanel';
                 document.getElementById(id).classList.add('active');
                 if (this.dataset.tab === 'roomList') refreshRooms();
             };
         });
-        
-        // 聊天回车
+
         var chatInput = document.getElementById('chatInput');
         if (chatInput) chatInput.onkeydown = function(e) { if (e.key === 'Enter') sendChat(); };
+
+        window.addEventListener('resize', scheduleScreenLayout);
+        window.addEventListener('orientationchange', scheduleScreenLayout);
     }
 
     function bind(id, fn) {
@@ -214,45 +191,95 @@ u: 'KEY_SELECT', i: 'KEY_START'
             'btnA': 'KEY_A', 'btnB': 'KEY_B',
             'btnSelect': 'KEY_SELECT', 'btnStart': 'KEY_START'
         };
-        
+
         Object.keys(keys).forEach(function(id) {
             var btn = document.getElementById(id);
             if (!btn) return;
             var key = keys[id];
-            
-            btn.ontouchstart = function(e) { e.preventDefault(); setGameInput(key, 0x41); };
-            btn.ontouchend = function(e) { e.preventDefault(); setGameInput(key, 0x40); };
-            btn.onmousedown = function() { setGameInput(key, 0x41); };
-            btn.onmouseup = function() { setGameInput(key, 0x40); };
+
+            btn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                setGameInput(key, 0x41);
+            }, { passive: false });
+            btn.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                setGameInput(key, 0x40);
+            }, { passive: false });
+            btn.addEventListener('touchcancel', function(e) {
+                e.preventDefault();
+                setGameInput(key, 0x40);
+            }, { passive: false });
+            btn.addEventListener('mousedown', function() { setGameInput(key, 0x41); });
+            btn.addEventListener('mouseup', function() { setGameInput(key, 0x40); });
+            btn.addEventListener('mouseleave', function() { setGameInput(key, 0x40); });
         });
     }
 
-    function setGameInput(key, value) {
-        if (nes && nes.keyboard) {
-            var state = onlineRoomId && onlinePlayerId === 2 ? nes.keyboard.state2 : nes.keyboard.state1;
+    function applyLocalInput(key, value) {
+        if (!nes || !nes.keyboard) return;
+        var state = (onlineRoomId && onlinePlayerId === 2) ? nes.keyboard.state2 : nes.keyboard.state1;
+        if (Object.prototype.hasOwnProperty.call(nes.keyboard.keys, key)) {
             state[nes.keyboard.keys[key]] = value;
         }
-        if (onlineRoomId && onlineMultiplayer) onlineMultiplayer.sendInput({ key: key, value: value });
+    }
+
+    function setGameInput(key, value) {
+        applyLocalInput(key, value);
+        if (!onlineRoomId || !onlineMultiplayer) return;
+        if (lastNetInput[key] === value) return;
+        lastNetInput[key] = value;
+        pendingNetInputs.push({ key: key, value: value });
+        if (inputFlushTimer) return;
+        inputFlushTimer = setTimeout(flushNetInputs, 0);
+    }
+
+    function flushNetInputs() {
+        inputFlushTimer = null;
+        if (!pendingNetInputs.length || !onlineMultiplayer) return;
+        onlineMultiplayer.sendInput({ keys: pendingNetInputs.slice() });
+        pendingNetInputs = [];
+    }
+
+    function initScreenLayout() {
+        scheduleScreenLayout();
+    }
+
+    function scheduleScreenLayout() {
+        if (layoutRaf) cancelAnimationFrame(layoutRaf);
+        layoutRaf = requestAnimationFrame(layoutGameScreen);
+    }
+
+    function layoutGameScreen() {
+        layoutRaf = 0;
+        var page = document.getElementById('gamePage');
+        var canvas = document.querySelector('#emulator canvas');
+        if (!page || !canvas || !page.classList.contains('active')) return;
+        if (document.documentElement.classList.contains('desktop-app')) {
+            canvas.style.width = '';
+            canvas.style.height = '';
+            return;
+        }
+
+        var styles = getComputedStyle(page);
+        var leftSpace = parseFloat(styles.getPropertyValue('--left-control-space')) || 0;
+        var rightSpace = parseFloat(styles.getPropertyValue('--right-control-space')) || 0;
+        var bottomSpace = 0;
+        if (window.innerHeight > window.innerWidth) bottomSpace = 200;
+        var availW = Math.max(160, window.innerWidth - leftSpace - rightSpace - 12);
+        var availH = Math.max(160, window.innerHeight - bottomSpace - 12);
+        var scale = Math.min(availW / 256, availH / 240);
+        if (scale > 1) scale = Math.floor(scale);
+        if (scale < 1) scale = Math.max(scale, 0.5);
+        canvas.style.width = Math.floor(256 * scale) + 'px';
+        canvas.style.height = Math.floor(240 * scale) + 'px';
     }
 
     function initBgm() {
         mainBgm = document.getElementById('mainBgm');
-        if (mainBgm) { mainBgm.volume = 0.3; mainBgm.play().catch$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }}); }
+        if (mainBgm) {
+            mainBgm.volume = 0.3;
+            mainBgm.play().catch(function() {});
+        }
     }
 
     function initOnline() {
@@ -261,8 +288,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
         onlineMultiplayer.connect(window.REALTIME_SERVER_URL || 'wss://ws.onlyforus.online').catch(function() {
             showMessage('实时服务器连接失败', 'error');
         });
-        
-        // 填充游戏选择
+
         var sel = document.getElementById('gameSelectOnline');
         if (sel) {
             sel.innerHTML = '<option value="">请选择游戏</option>';
@@ -273,7 +299,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
                 sel.appendChild(opt);
             });
         }
-        
+
         onlineMultiplayer.onRoomCreated = function(id) {
             onlineRoomId = id;
             onlinePlayerId = 1;
@@ -290,11 +316,11 @@ u: 'KEY_SELECT', i: 'KEY_START'
             if (btn) { btn.disabled = false; btn.textContent = '开始游戏'; }
             addChat('系统', d.playerName + ' 加入了房间');
         };
-        onlineMultiplayer.onPlayerLeft = function() {
-            var departedPlayerId = arguments[0] && arguments[0].playerId;
+        onlineMultiplayer.onPlayerLeft = function(d) {
+            var departedPlayerId = d && d.playerId;
             if (departedPlayerId === 1 && onlinePlayerId === 2) {
                 stopVoiceChat(false);
-                onlineMultiplayer.leaveRoom().catch(function(e) { console.warn('房间销毁清理失败:', e); });
+                try { onlineMultiplayer.leaveRoom(); } catch (e) {}
                 onlineRoomId = null;
                 onlinePlayerId = null;
                 showMessage('房主已退出，房间已销毁', 'warning');
@@ -310,8 +336,17 @@ u: 'KEY_SELECT', i: 'KEY_START'
         onlineMultiplayer.onPlayerInput = function(input, playerId) {
             if (!nes || !nes.keyboard || !input) return;
             var state = playerId === 2 ? nes.keyboard.state2 : nes.keyboard.state1;
-            if (Object.prototype.hasOwnProperty.call(nes.keyboard.keys, input.key)) {
-                state[nes.keyboard.keys[input.key]] = input.value;
+            var keys = nes.keyboard.keys;
+            if (input.keys && input.keys.length) {
+                input.keys.forEach(function(item) {
+                    if (item && Object.prototype.hasOwnProperty.call(keys, item.key)) {
+                        state[keys[item.key]] = item.value;
+                    }
+                });
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(keys, input.key)) {
+                state[keys[input.key]] = input.value;
             }
         };
         onlineMultiplayer.onGameStart = function(d) {
@@ -330,29 +365,14 @@ u: 'KEY_SELECT', i: 'KEY_START'
         });
         var tabs = document.getElementById('bottomTabs');
         if (tabs) tabs.style.display = (id === 'gamePage' || id === 'roomPage') ? 'none' : 'flex';
-        
+
         if (roomListRefreshTimer) {
             clearInterval(roomListRefreshTimer);
             roomListRefreshTimer = null;
         }
         if (id === 'onlineLobbyPage') {
             if (isRoomListVisible()) refreshRooms();
-            roomListRefreshTimer = setInterval$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }
+            roomListRefreshTimer = setInterval(function() {
                 if (isRoomListVisible()) refreshRooms(true);
             }, 2000);
             var nick = document.getElementById('lobbyNickname');
@@ -364,37 +384,26 @@ u: 'KEY_SELECT', i: 'KEY_START'
         }
     }
 
-    // 游戏核心
     function startGame(game) {
         currentGame = game;
         if (mainBgm) mainBgm.pause();
-        
+
         document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
         document.getElementById('gamePage').classList.add('active');
-            var escHint = document.getElementById('escHint');
-            if (escHint) escHint.style.display = 'block';
+        var escHint = document.getElementById('escHint');
+        if (escHint) escHint.style.display = 'block';
         document.getElementById('gameTitle').textContent = game.name;
         document.getElementById('bottomTabs').style.display = 'none';
-        
+
         setGameOrientation('landscape');
         showGameHeader();
-        
-        setTimeout$1
+        lastNetInput = {};
+        pendingNetInputs = [];
 
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    } loadROM(game.file); }, 300);
+        setTimeout(function() {
+            loadROM(game.file);
+            scheduleScreenLayout();
+        }, 300);
     }
 
     function loadROM(file) {
@@ -402,21 +411,19 @@ u: 'KEY_SELECT', i: 'KEY_START'
             var emulator = document.getElementById('emulator');
             emulator.innerHTML = '<canvas width="256" height="240"></canvas>';
             var canvas = emulator.querySelector('canvas');
-            var ctx = canvas.getContext('2d');
-            
-            // 创建canvasImageData
-            var canvasImageData = ctx.getImageData(0, 0, 256, 240);
-            
-            // 清空canvas为黑色
+            var ctx = canvas.getContext('2d', { alpha: false });
+
+            var canvasImageData = ctx.createImageData(256, 240);
+            var data = canvasImageData.data;
+            for (var i = 0; i < data.length; i += 4) {
+                data[i] = 0;
+                data[i + 1] = 0;
+                data[i + 2] = 0;
+                data[i + 3] = 0xFF;
+            }
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, 256, 240);
-            
-            // 设置alpha通道
-            for (var i = 3; i < canvasImageData.data.length; i += 4) {
-                canvasImageData.data[i] = 0xFF;
-            }
-            
-            // 创建UI构造函数
+
             var audioContext = null;
             var nextAudioTime = 0;
             try {
@@ -429,7 +436,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
                 this.nes = nesInstance;
                 this.canvasImageData = canvasImageData;
                 this.ctx = ctx;
-                
+
                 this.writeFrame = function(buffer, prevBuffer) {
                     var imageData = this.canvasImageData.data;
                     var pixel, i, j;
@@ -445,10 +452,11 @@ u: 'KEY_SELECT', i: 'KEY_START'
                     }
                     this.ctx.putImageData(this.canvasImageData, 0, 0);
                 };
-                
+
                 this.writeAudio = function(samples) {
                     if (!audioContext || !samples || !samples.length) return;
                     var frameCount = Math.floor(samples.length / 2);
+                    if (frameCount <= 0) return;
                     var buffer = audioContext.createBuffer(2, frameCount, audioContext.sampleRate);
                     var left = buffer.getChannelData(0), right = buffer.getChannelData(1);
                     for (var n = 0, j = 0; n < samples.length; n += 2, j++) {
@@ -461,17 +469,20 @@ u: 'KEY_SELECT', i: 'KEY_START'
                     nextAudioTime = Math.max(audioContext.currentTime, nextAudioTime);
                     source.start(nextAudioTime);
                     nextAudioTime += buffer.duration;
+                    if (nextAudioTime - audioContext.currentTime > 0.08) {
+                        nextAudioTime = audioContext.currentTime;
+                    }
                 };
                 this.updateStatus = function(s) { console.log('NES:', s); };
                 this.enable = function() {};
             };
-            
+
             nes = new JSNES({
                 ui: GameUI,
                 emulateSound: true,
                 sampleRate: audioContext ? audioContext.sampleRate : 44100
             });
-            
+
             var xhr = new XMLHttpRequest();
             xhr.open('GET', 'roms/' + file, true);
             xhr.overrideMimeType('text/plain; charset=x-user-defined');
@@ -480,6 +491,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
                     try {
                         nes.loadRom(xhr.responseText);
                         nes.start();
+                        scheduleScreenLayout();
                     } catch(e) {
                         console.error('ROM加载失败:', e);
                     }
@@ -499,22 +511,7 @@ u: 'KEY_SELECT', i: 'KEY_START'
         }
         try {
             if (screen.orientation && screen.orientation.lock) {
-                screen.orientation.lock(orientation).catch$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }});
+                screen.orientation.lock(orientation).catch(function() {});
             }
         } catch(e) {}
     }
@@ -525,25 +522,11 @@ u: 'KEY_SELECT', i: 'KEY_START'
         if (nes) { try { nes.stop(); } catch(e) {} nes = null; }
         currentGame = null;
         isPaused = false;
-        if (mainBgm) mainBgm.play().catch$1
+        lastNetInput = {};
+        pendingNetInputs = [];
+        if (mainBgm) mainBgm.play().catch(function() {});
 
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }});
-        
         setGameOrientation('portrait');
-        
         showPage(onlineRoomId ? 'roomPage' : 'gameSelectPage');
         var escHint = document.getElementById('escHint');
         if (escHint) escHint.style.display = 'none';
@@ -560,30 +543,22 @@ u: 'KEY_SELECT', i: 'KEY_START'
         if (!header) return;
         header.classList.add('visible');
         clearTimeout(gameHeaderTimer);
-        gameHeaderTimer = setTimeout$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }
+        gameHeaderTimer = setTimeout(function() {
             header.classList.remove('visible');
-        }, 1000);
+        }, 1500);
     }
 
     function togglePause() {
         if (!nes) return;
-        if (isPaused) { nes.start(); isPaused = false; document.getElementById('pauseOverlay').classList.remove('visible'); }
-        else { nes.stop(); isPaused = true; document.getElementById('pauseOverlay').classList.add('visible'); }
+        if (isPaused) {
+            nes.start();
+            isPaused = false;
+            document.getElementById('pauseOverlay').classList.remove('visible');
+        } else {
+            nes.stop();
+            isPaused = true;
+            document.getElementById('pauseOverlay').classList.add('visible');
+        }
     }
 
     function resumeGame() {
@@ -605,76 +580,76 @@ u: 'KEY_SELECT', i: 'KEY_START'
         showMessage(nes.opts.emulateSound ? '声音已开启' : '声音已关闭', 'info');
     }
 
-    // 联机功能
     function showNickname() {
         document.getElementById('nicknameInput').value = localStorage.getItem('playerNickname') || '';
         show('nicknameDialog');
     }
 
-    async function confirmNickname() {
+    function confirmNickname() {
         var name = document.getElementById('nicknameInput').value.trim();
         if (!name) { showMessage('请输入昵称', 'warning'); return; }
         if (name.length < 2) { showMessage('昵称至少2个字符', 'warning'); return; }
-        
-        try {
-            await onlineMultiplayer.init();
-            var ok = await onlineMultiplayer.checkNickname(name);
-            if (!ok) { showMessage('该昵称已被使用', 'error'); return; }
-            
-            var reg = await onlineMultiplayer.registerNickname(name, DEVICE_ID);
-            if (reg) {
-                localStorage.setItem('playerNickname', name);
-                onlineMultiplayer.playerName = name;
-                hide('nicknameDialog');
-                showMessage('昵称设置成功', 'success');
-                showPage('onlineLobbyPage');
-            } else {
-                showMessage('注册失败', 'error');
-            }
-        } catch(e) { showMessage('操作失败', 'error'); }
+        localStorage.setItem('playerNickname', name);
+        if (onlineMultiplayer) onlineMultiplayer.playerName = name;
+        hide('nicknameDialog');
+        showMessage('昵称设置成功', 'success');
+        showPage('onlineLobbyPage');
     }
 
-    async function createRoom() {
+    function createRoom() {
         var button = document.getElementById('createRoomBtn');
         if (button && button.disabled) return;
         var game = document.getElementById('gameSelectOnline').value;
         var name = localStorage.getItem('playerNickname');
         if (!game) { showMessage('请选择游戏', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        
-        try {
-            if (button) { button.disabled = true; button.dataset.originalText = button.textContent; button.textContent = '创建中...'; }
-            var ok = await onlineMultiplayer.createRoom(game, name);
-            if (ok) onlinePlayerId = 1;
-            else { showMessage('创建失败', 'error'); }
-        } catch(e) { showMessage('创建失败', 'error'); }
-        finally { if (button) { button.disabled = false; button.textContent = button.dataset.originalText || '创建房间'; } }
+        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
+            showMessage('服务器未连接，请稍后重试', 'error');
+            return;
+        }
+
+        if (button) {
+            button.disabled = true;
+            button.dataset.originalText = button.textContent;
+            button.textContent = '创建中...';
+        }
+        var ok = onlineMultiplayer.createRoom(game, name);
+        if (!ok) showMessage('创建失败', 'error');
+        if (button) {
+            setTimeout(function() {
+                button.disabled = false;
+                button.textContent = button.dataset.originalText || '创建房间';
+            }, 800);
+        }
     }
 
-    async function joinRoom() {
+    function joinRoom() {
         var id = document.getElementById('roomIdInput').value.toUpperCase();
         var name = localStorage.getItem('playerNickname');
         if (!id || id.length !== 6) { showMessage('请输入6位房间号', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        
-        try {
-            var ok = await onlineMultiplayer.joinRoom(id, name);
-            if (ok) onlinePlayerId = 2;
-            else { showMessage('加入失败', 'error'); }
-        } catch(e) { showMessage('加入失败', 'error'); }
+        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
+            showMessage('服务器未连接，请稍后重试', 'error');
+            return;
+        }
+        var ok = onlineMultiplayer.joinRoom(id, name);
+        if (!ok) showMessage('加入失败', 'error');
     }
 
     async function refreshRooms(silent) {
         var list = document.getElementById('roomList');
-        if (!list || roomListRefreshPending) return;
+        if (!list || roomListRefreshPending || !onlineMultiplayer) return;
         roomListRefreshPending = true;
         if (!silent) list.innerHTML = '<div class="room-list-empty">加载中...</div>';
-        
+
         try {
             var rooms = await onlineMultiplayer.getRoomList();
-            if (!rooms || !rooms.length) { list.innerHTML = '<div class="room-list-empty">暂无房间</div>'; return; }
+            if (!rooms || !rooms.length) {
+                list.innerHTML = '<div class="room-list-empty">暂无房间</div>';
+                return;
+            }
             list.innerHTML = rooms.map(function(r) {
-                return '<div class="room-item"><div class="room-item-info"><div class="room-item-game">' + r.game + '</div><div class="room-item-id">房间号: ' + r.id + '</div></div><button class="room-item-join" onclick="window._join(\'' + r.id + '\')">加入</button></div>';
+                return '<div class="room-item"><div class="room-item-info"><div class="room-item-game">' + r.game + '</div><div class="room-item-id">房间号: ' + r.id + '</div><div class="room-item-host">' + (r.player1 || '') + '</div></div><button class="room-item-join" onclick="window._join(\'' + r.id + '\')">加入</button></div>';
             }).join('');
         } catch(e) {
             if (!silent) list.innerHTML = '<div class="room-list-empty">加载失败</div>';
@@ -686,8 +661,11 @@ u: 'KEY_SELECT', i: 'KEY_START'
     window._join = async function(id) {
         var name = localStorage.getItem('playerNickname');
         if (!name) { showNickname(); return; }
-        var ok = await onlineMultiplayer.joinRoom(id, name);
-        if (ok) onlinePlayerId = 2;
+        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
+            showMessage('服务器未连接', 'error');
+            return;
+        }
+        onlineMultiplayer.joinRoom(id, name);
     };
 
     function showRoom(id, isHost, hostName) {
@@ -707,29 +685,17 @@ u: 'KEY_SELECT', i: 'KEY_START'
 
     function copyRoomId() {
         var id = document.getElementById('roomIdDisplay').textContent;
-        if (navigator.clipboard) navigator.clipboard.writeText(id).then$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    } showMessage('已复制', 'success'); });
-        else showMessage('房间号: ' + id, 'info');
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(id).then(function() { showMessage('已复制', 'success'); });
+        } else {
+            showMessage('房间号: ' + id, 'info');
+        }
     }
 
     function sendChat() {
         var input = document.getElementById('chatInput');
         var msg = input.value.trim();
-        if (!msg) return;
+        if (!msg || !onlineMultiplayer) return;
         onlineMultiplayer.sendChatMessage(msg);
         addChat(localStorage.getItem('playerNickname'), msg);
         input.value = '';
@@ -761,14 +727,12 @@ u: 'KEY_SELECT', i: 'KEY_START'
         }
     }
 
-    async function leaveRoom() {
+    function leaveRoom() {
         stopVoiceChat();
         try {
-            if (onlineMultiplayer) await onlineMultiplayer.leaveRoom();
+            if (onlineMultiplayer) onlineMultiplayer.leaveRoom();
         } catch (e) {
             console.warn('离开房间清理失败:', e);
-            showMessage('房间销毁失败，请重试', 'error');
-            return;
         }
         onlineRoomId = null;
         onlinePlayerId = null;
@@ -779,18 +743,42 @@ u: 'KEY_SELECT', i: 'KEY_START'
         if (!onlineRoomId) { showMessage('请先进入联机房间', 'warning'); return; }
         if (voiceStream) { stopVoiceChat(); return; }
         try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('当前环境不支持麦克风');
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('当前环境不支持麦克风');
+            }
             voiceStream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
                 video: false
             });
             ensureVoicePeer();
             updateVoiceButtons(true);
             await onlineMultiplayer.sendVoiceSignal({ type: 'ready' });
-            showMessage('语音已开启', 'success');
+            showMessage('麦克风已开启', 'success');
         } catch (e) {
+            console.error('麦克风开启失败:', e);
             voiceStream = null;
-            showMessage('无法使用麦克风，请检查权限', 'error');
+            updateVoiceButtons(false);
+            showMessage('无法使用麦克风，请检查权限（需 HTTPS）', 'error');
+        }
+    }
+
+    function toggleSpeaker() {
+        var audio = document.getElementById('remoteVoiceAudio');
+        if (!audio) return;
+        remoteAudioMuted = !remoteAudioMuted;
+        audio.muted = remoteAudioMuted;
+        var btn = document.getElementById('gameSpkBtn');
+        if (btn) {
+            btn.classList.toggle('muted', remoteAudioMuted);
+            btn.title = remoteAudioMuted ? '开启扬声器' : '关闭扬声器';
+        }
+        showMessage(remoteAudioMuted ? '对方声音已静音' : '对方声音已开启', 'info');
+        if (!remoteAudioMuted && audio.srcObject) {
+            audio.play().catch(function() {});
         }
     }
 
@@ -801,31 +789,25 @@ u: 'KEY_SELECT', i: 'KEY_START'
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' }
         ] });
-        if (voiceStream) voiceStream.getTracks().forEach(function(track) { voicePeer.addTrack(track, voiceStream); });
+        if (voiceStream) {
+            voiceStream.getTracks().forEach(function(track) { voicePeer.addTrack(track, voiceStream); });
+        }
         voicePeer.onicecandidate = function(e) {
             if (e.candidate) onlineMultiplayer.sendVoiceSignal({ type: 'candidate', candidate: e.candidate });
         };
         voicePeer.ontrack = function(e) {
             var audio = document.getElementById('remoteVoiceAudio');
-            if (audio) { audio.srcObject = e.streams[0]; audio.play().catch$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }}); }
+            if (!audio) return;
+            audio.srcObject = e.streams[0];
+            audio.muted = remoteAudioMuted;
+            audio.play().catch(function() {});
         };
         voicePeer.onconnectionstatechange = function() {
-            if (voicePeer && voicePeer.connectionState === 'connected') showMessage('语音通话已连接', 'success');
+            if (voicePeer && voicePeer.connectionState === 'connected') {
+                showMessage('语音通话已连接', 'success');
+                var audio = document.getElementById('remoteVoiceAudio');
+                if (audio && audio.srcObject) audio.play().catch(function() {});
+            }
         };
         return voicePeer;
     }
@@ -866,14 +848,16 @@ u: 'KEY_SELECT', i: 'KEY_START'
             }
             if (peer.remoteDescription && pendingVoiceCandidates.length) {
                 var candidates = pendingVoiceCandidates.splice(0);
-                for (var i = 0; i < candidates.length; i++) await peer.addIceCandidate(candidates[i]);
+                for (var i = 0; i < candidates.length; i++) {
+                    await peer.addIceCandidate(candidates[i]);
+                }
             }
         } catch (e) { console.error('语音连接失败:', e); }
     }
 
     function stopVoiceChat(notifyPeer) {
         if (notifyPeer !== false && onlineMultiplayer && onlineRoomId) {
-            onlineMultiplayer.sendVoiceSignal({ type: 'hangup' });
+            try { onlineMultiplayer.sendVoiceSignal({ type: 'hangup' }); } catch (e) {}
         }
         if (voicePeer) { voicePeer.close(); voicePeer = null; }
         if (voiceStream) voiceStream.getTracks().forEach(function(track) { track.stop(); });
@@ -887,21 +871,25 @@ u: 'KEY_SELECT', i: 'KEY_START'
     function updateVoiceButtons(enabled) {
         var roomButton = document.getElementById('voiceChatBtn');
         var gameButton = document.getElementById('gameVoiceBtn');
+        var micButton = document.getElementById('gameMicBtn');
         if (roomButton) {
             roomButton.classList.toggle('active', enabled);
             var label = roomButton.querySelector('span');
             if (label) label.textContent = enabled ? '关闭语音' : '开启语音';
         }
         if (gameButton) gameButton.classList.toggle('active', enabled);
+        if (micButton) {
+            micButton.classList.toggle('active', enabled);
+            micButton.title = enabled ? '关闭麦克风' : '开启麦克风';
+        }
     }
 
-    // 关于我们
     function showAbout() {
         var overlay = document.createElement('div');
         overlay.className = 'dialog-overlay visible';
         overlay.innerHTML = '<div class="dialog-box"><div class="dialog-title">关于我们</div><div style="text-align:center;padding:15px 0;"><p style="font-size:16px;font-weight:600;">经典怀旧游戏</p><p style="color:var(--text-secondary);margin-top:8px;">版本: v' + APP_VERSION + '</p><p style="color:var(--text-secondary);margin-top:4px;">FC/NES 经典游戏合集</p></div><div class="dialog-actions"><button class="dialog-btn dialog-btn-confirm" id="checkUpdateBtn">检查更新</button><button class="dialog-btn dialog-btn-cancel" onclick="this.closest(\'.dialog-overlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(overlay);
-        
+
         document.getElementById('checkUpdateBtn').onclick = function() {
             overlay.remove();
             checkUpdate();
@@ -922,62 +910,18 @@ u: 'KEY_SELECT', i: 'KEY_START'
                 }
                 if (hasUpdate) {
                     showMessage('发现新版本 v' + remote.version, 'warning');
-                    setTimeout$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    }
+                    setTimeout(function() {
                         if (confirm('发现新版本 v' + remote.version + '，是否下载？')) {
-                            window.open('https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main/classic-fc-games.apk');
+                            window.open(DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath);
                         }
                     }, 500);
                 } else {
                     showMessage('当前已是最新版本', 'success');
                 }
             })
-            .catch$1
-
-    // 下载链接配置（支持自定义域名和 GitHub 备用）
-    var DOWNLOAD_CONFIG = {
-        primaryDomain: 'https://onlyforus.online',
-        fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main',
-        apkPath: '/classic-fc-games.apk'
-    };
-    
-    function getDownloadUrl() {
-        return DOWNLOAD_CONFIG.primaryDomain + DOWNLOAD_CONFIG.apkPath;
-    }
-    
-    function getGithubDownloadUrl() {
-        return DOWNLOAD_CONFIG.fallbackDomain + DOWNLOAD_CONFIG.apkPath;
-    } showMessage('检查更新失败', 'error'); });
+            .catch(function() { showMessage('检查更新失败', 'error'); });
     }
 
     function show(id) { document.getElementById(id).classList.add('visible'); }
     function hide(id) { document.getElementById(id).classList.remove('visible'); }
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-

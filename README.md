@@ -13,9 +13,15 @@
 
 ## 📸 截图
 
-| 游戏选择 | 游戏画面 |
-|---------|---------|
-| ![选择](screenshots/select.png) | ![游戏](screenshots/game.png) |
+### 游戏选择
+
+![游戏选择界面](screenshots/select.png)
+
+### 游戏画面（横屏手柄）
+
+![游戏画面](screenshots/game.png)
+
+> 画面居中稳定显示；左侧方向键，右侧 A/B + 选择/开始；右上角为麦克风与扬声器。
 
 ## 🎮 操作说明
 

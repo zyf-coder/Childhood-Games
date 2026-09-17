@@ -1,6 +1,6 @@
 {
   "name": "classic-fc-games",
-  "version": "1.7.11",
+  "version": "1.7.12",
   "private": true,
   "scripts": {
     "android:sync": "cap sync android",

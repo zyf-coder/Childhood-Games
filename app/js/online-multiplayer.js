@@ -190,6 +190,7 @@ class OnlineMultiplayer {
             this.roomId = null;
             this.playerId = null;
         }
+        return Promise.resolve();
     }
 
     // 断开连接

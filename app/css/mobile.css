@@ -1,4 +1,4 @@
-/* 经典怀旧游戏 v1.7.2 */
+/* 经典怀旧游戏 v1.7.12 */
 
 :root {
     --primary: #6366f1;
@@ -90,7 +90,7 @@ html, body {
 }
 
 .header {
-    padding: calc(70px + env(safe-area-inset-top, 0px)) 20px 16px;
+    padding: calc(28px + env(safe-area-inset-top, 0px)) 20px 16px;
     text-align: center;
 }
 
@@ -159,35 +159,75 @@ html, body {
     text-align: center;
 }
 
-/* 游戏页面 - 全屏横屏 */
+/* ========== 游戏页面 ========== */
 #gamePage {
     background: #000;
+    --left-control-space: 190px;
+    --right-control-space: 210px;
 }
 
+.game-screen-container {
+    position: fixed;
+    top: 0;
+    left: var(--left-control-space);
+    right: var(--right-control-space);
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    contain: layout paint;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.emulator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.emulator canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    flex: 0 0 auto;
+}
+
+/* 顶栏（点击顶部显示） */
 .game-header {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: 50px;
-    padding: 8px 20px;
+    height: 52px;
+    padding: 8px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
-    z-index: 100;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.92), transparent);
+    z-index: 250;
     opacity: 0;
-    transition: opacity 0.3s;
+    transform: translateY(-100%);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
-.game-header.visible { opacity: 1; }
+.game-header.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
 
 .header-btn {
-    background: rgba(255,255,255,0.2);
-    border: none;
+    background: rgba(15,23,42,0.94);
+    border: 2px solid rgba(255,255,255,0.85);
     border-radius: 10px;
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -195,77 +235,98 @@ html, body {
     cursor: pointer;
 }
 
+.header-btn:active {
+    background: #fff;
+    color: #0f172a;
+}
+
+.header-btn.active {
+    background: #059669;
+    border-color: #6ee7b7;
+}
+
 .header-right {
     display: flex;
-    gap: 12px;
+    gap: 8px;
 }
 
 .game-title {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(15,23,42,0.82);
 }
 
-/* 游戏画面容器 */
-.game-screen-container {
+/* 游戏内麦克风 / 扬声器 */
+.game-voice-bar {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 220;
+}
+
+.voice-icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.35);
+    background: rgba(15,23,42,0.72);
+    color: rgba(255,255,255,0.85);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #000;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
 }
 
-.emulator {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.voice-icon-btn:active {
+    transform: scale(0.92);
 }
 
-.emulator canvas {
-    width: min(100vw, calc(100dvh * 256 / 240));
-    height: auto;
-    max-width: 100%;
-    max-height: 100dvh;
-    aspect-ratio: 256 / 240;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
+.voice-icon-btn.active {
+    background: #059669;
+    border-color: #6ee7b7;
+    color: #fff;
 }
 
-.nes-status, .nes-roms, .nes-controls { display: none !important; }
+.voice-icon-btn.muted {
+    background: #7f1d1d;
+    border-color: #fca5a5;
+    color: #fff;
+}
 
-/* 方向按键 */
+/* 左侧方向键 */
 .dpad-area {
     position: fixed;
-    bottom: 40px;
-    left: 24px;
-    width: 150px;
-    height: 150px;
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: 168px;
+    height: 168px;
     z-index: 200;
 }
 
 .dpad-btn {
     position: absolute;
-    width: 52px;
-    height: 52px;
+    width: 58px;
+    height: 58px;
     background: rgba(255,255,255,0.12);
-    border: 2px solid rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.22);
     border-radius: 14px;
-    color: rgba(255,255,255,0.8);
+    color: rgba(255,255,255,0.85);
     font-size: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    touch-action: none;
 }
 
 .dpad-btn:active {
-    background: rgba(255,255,255,0.3);
-    transform: scale(0.9);
+    background: rgba(255,255,255,0.32);
 }
 
 .dpad-up { top: 0; left: 50%; transform: translateX(-50%); }
@@ -273,75 +334,85 @@ html, body {
 .dpad-down { bottom: 0; left: 50%; transform: translateX(-50%); }
 .dpad-left { top: 50%; left: 0; transform: translateY(-50%); }
 
-.dpad-up:active { transform: translateX(-50%) scale(0.9); }
-.dpad-right:active { transform: translateY(-50%) scale(0.9); }
-.dpad-down:active { transform: translateX(-50%) scale(0.9); }
-.dpad-left:active { transform: translateY(-50%) scale(0.9); }
+.dpad-up:active { transform: translateX(-50%) scale(0.92); }
+.dpad-right:active { transform: translateY(-50%) scale(0.92); }
+.dpad-down:active { transform: translateX(-50%) scale(0.92); }
+.dpad-left:active { transform: translateY(-50%) scale(0.92); }
 
-/* 操作按钮 */
-.action-area {
+/* 右侧操作区 */
+.right-controls {
     position: fixed;
-    bottom: 40px;
-    right: 24px;
-    width: 130px;
-    height: 130px;
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
     z-index: 200;
 }
 
+.system-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 8px;
+}
+
+.system-btn {
+    width: 72px;
+    height: 40px;
+    padding: 0;
+    border: 2px solid rgba(255,255,255,0.7);
+    border-radius: 10px;
+    background: rgba(15,23,42,0.9);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: none;
+}
+
+.system-btn:active {
+    background: #fff;
+    color: #0f172a;
+}
+
+.action-area {
+    position: relative;
+    width: 150px;
+    height: 150px;
+}
+
 .action-btn {
-    width: 58px;
-    height: 58px;
+    width: 68px;
+    height: 68px;
     border-radius: 50%;
     border: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     color: white;
     cursor: pointer;
     position: absolute;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    touch-action: none;
 }
 
 .btn-a {
     background: radial-gradient(circle at 30% 30%, #ff6b6b, #ef4444);
     right: 0;
-    top: 10px;
+    top: 8px;
 }
 
 .btn-b {
     background: radial-gradient(circle at 30% 30%, #ffa94d, #f97316);
     left: 0;
-    bottom: 10px;
+    bottom: 8px;
 }
 
 .action-btn:active {
     transform: scale(0.9);
-}
-
-.system-btns {
-    position: fixed;
-    bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 16px;
-    z-index: 200;
-}
-
-.system-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 20px;
-    padding: 10px 22px;
-    color: rgba(255,255,255,0.7);
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.system-btn:active {
-    background: rgba(255,255,255,0.2);
 }
 
 /* 暂停菜单 */
@@ -625,6 +696,7 @@ html, body {
     align-items: center;
     padding: 20px;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .room-back-btn { background: none; border: none; color: white; cursor: pointer; }
@@ -706,7 +778,16 @@ html, body {
 }
 
 .room-actions { padding: 16px; }
-#remoteVoiceAudio { display: none; }
+
+/* 远端语音元素：隐藏但可播放 */
+#remoteVoiceAudio {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    left: -9999px;
+}
 
 /* 我的页面 */
 .profile-container {
@@ -716,7 +797,11 @@ html, body {
     background: linear-gradient(135deg, #0f172a, #1e1b4b, #0f172a);
 }
 
-.profile-header { padding: 24px; text-align: center; }
+.profile-header {
+    padding: calc(56px + env(safe-area-inset-top, 0px)) 24px 24px;
+    text-align: center;
+}
+
 .profile-header h2 { font-size: 20px; }
 
 .profile-content { padding: 0 16px 80px; }
@@ -734,279 +819,88 @@ html, body {
 .profile-label { font-size: 14px; color: var(--text-secondary); }
 .profile-value { font-size: 14px; font-weight: 600; }
 
-
-
-
-
-/* 横屏游戏模式 - 响应式布局 */
-#gamePage.active {
-    background: #000;
-}
-
-#gamePage.active .game-screen-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #000;
-}
-
-#gamePage.active .emulator {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#gamePage.active .emulator canvas {
-    width: 100%;
-    height: 100%;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-}
-
-/* 横屏时隐藏标题栏 */
-#gamePage.active .game-header {
-    display: none;
-}
-
-#gamePage.active::before {
-    display: none;
-}
-
-/* v1.7.6 最终覆盖：顶部工具栏按需显示 */
-#gamePage.active .game-header {
-    opacity: 0;
-    transform: translateY(-100%);
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-#gamePage.active .game-header.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-/* v1.7.5 安全游戏区域与页面间距 */
-.game-select-container .header {
-    padding-top: calc(28px + env(safe-area-inset-top, 0px));
-}
-
-.profile-header {
-    padding-top: calc(56px + env(safe-area-inset-top, 0px));
-}
-
-#gamePage.active {
-    --left-control-space: max(260px, calc(env(safe-area-inset-left, 0px) + 230px));
-    --right-control-space: max(300px, calc(env(safe-area-inset-right, 0px) + 270px));
-}
-
-#gamePage.active .game-screen-container {
-    left: var(--left-control-space);
-    right: var(--right-control-space);
-    width: auto;
-}
-
-#gamePage.active .game-header {
-    opacity: 0;
-    transform: translateY(-100%);
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-#gamePage.active .game-header.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-#gamePage.active .dpad-area {
-    left: max(36px, calc(env(safe-area-inset-left, 0px) + 20px));
-}
-
-#gamePage.active .right-controls {
-    right: max(36px, calc(env(safe-area-inset-right, 0px) + 20px));
-    width: 220px;
-    height: 210px;
-    display: block;
-}
-
-#gamePage.active .action-area {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 156px;
-    height: 156px;
-}
-
-#gamePage.active .system-btns {
-    position: absolute;
-    left: 0;
-    bottom: 8px;
-}
-
-/* 横屏时隐藏虚拟按键 */
-#gamePage.active .dpad-area,
-#gamePage.active .action-area,
-#gamePage.active .system-btns {
-    display: none;
-}
-
-/* 横屏时的返回按钮 - 左上角 */
-#gamePage.active::before {
-    content: '';
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    width: 40px;
-    height: 40px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 10px;
-    z-index: 300;
-    cursor: pointer;
-}
-
-/* 响应式：竖屏时显示虚拟按键 */
-@media (orientation: portrait) {
-    #gamePage.active .dpad-area,
-    #gamePage.active .action-area,
-    #gamePage.active .system-btns {
-        display: block;
+/* 窄屏横屏：压缩两侧控件，扩大中间画面 */
+@media (orientation: landscape) and (max-height: 420px) {
+    #gamePage {
+        --left-control-space: 160px;
+        --right-control-space: 180px;
     }
-    
-    #gamePage.active .game-header {
-        display: flex;
+
+    .dpad-area {
+        width: 144px;
+        height: 144px;
+    }
+
+    .dpad-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 18px;
+    }
+
+    .action-area {
+        width: 130px;
+        height: 130px;
+    }
+
+    .action-btn {
+        width: 58px;
+        height: 58px;
+        font-size: 18px;
+    }
+
+    .system-btn {
+        width: 64px;
+        height: 36px;
+        font-size: 12px;
+    }
+
+    .voice-icon-btn {
+        width: 38px;
+        height: 38px;
     }
 }
 
-/* Windows Electron 版使用键盘操作，不显示两侧虚拟按键。 */
-.desktop-app #gamePage.active .dpad-area,
-.desktop-app #gamePage.active .right-controls,
-.desktop-app #gamePage.active .action-area,
-.desktop-app #gamePage.active .system-btns {
+/* 桌面 Electron：隐藏虚拟按键，画面铺满 */
+.desktop-app #gamePage {
+    --left-control-space: 0px;
+    --right-control-space: 0px;
+}
+
+.desktop-app #gamePage .dpad-area,
+.desktop-app #gamePage .right-controls,
+.desktop-app #gamePage .game-voice-bar {
     display: none !important;
 }
 
-.desktop-app #gamePage.active .game-screen-container {
+.desktop-app #gamePage .game-screen-container {
     left: 0;
     right: 0;
 }
 
-/* v1.7.4 游戏控制布局 */
-#gamePage.active .game-header {
-    display: flex;
-    height: 58px;
-    padding-left: max(32px, calc(env(safe-area-inset-left, 0px) + 20px));
-    padding-right: max(32px, calc(env(safe-area-inset-right, 0px) + 20px));
-    opacity: 1;
-    z-index: 250;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.82), transparent);
-}
+/* 竖屏时也显示按键（手机未转横时） */
+@media (orientation: portrait) {
+    #gamePage {
+        --left-control-space: 0px;
+        --right-control-space: 0px;
+    }
 
-#gamePage.active .header-btn {
-    background: rgba(15,23,42,0.94);
-    border: 2px solid rgba(255,255,255,0.9);
-    border-radius: 8px;
-    color: #fff;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.65);
-}
+    #gamePage .game-screen-container {
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 200px;
+    }
 
-#gamePage.active .header-btn:active {
-    background: #fff;
-    color: #0f172a;
-}
+    #gamePage .dpad-area {
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    }
 
-#gamePage.active .game-title {
-    padding: 6px 12px;
-    border-radius: 6px;
-    background: rgba(15,23,42,0.82);
-}
+    #gamePage .right-controls {
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    }
 
-#gamePage.active .dpad-area {
-    display: block;
-    left: max(40px, calc(env(safe-area-inset-left, 0px) + 24px));
-    bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 24px));
-    width: 180px;
-    height: 180px;
-}
-
-#gamePage.active .dpad-btn {
-    width: 62px;
-    height: 62px;
-    font-size: 24px;
-}
-
-#gamePage.active .right-controls {
-    position: fixed;
-    right: max(40px, calc(env(safe-area-inset-right, 0px) + 24px));
-    bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 24px));
-    display: flex;
-    align-items: flex-end;
-    gap: 18px;
-    z-index: 200;
-}
-
-#gamePage.active .action-area {
-    position: relative;
-    inset: auto;
-    display: block;
-    width: 156px;
-    height: 156px;
-}
-
-#gamePage.active .action-btn {
-    width: 70px;
-    height: 70px;
-    font-size: 24px;
-}
-
-#gamePage.active .system-btns {
-    position: static;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-bottom: 10px;
-    transform: none;
-}
-
-#gamePage.active .system-btn {
-    width: 72px;
-    height: 42px;
-    padding: 0;
-    border: 2px solid rgba(255,255,255,0.75);
-    border-radius: 8px;
-    background: rgba(15,23,42,0.9);
-    color: #fff;
-    font-weight: 600;
-}
-
-#gamePage.active .system-btn:active {
-    background: #fff;
-    color: #0f172a;
-}
-
-#gamePage.active::before {
-    display: none;
-}
-
-#gamePage.active .game-header {
-    opacity: 0;
-    transform: translateY(-100%);
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-#gamePage.active .game-header.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
+    #gamePage .game-voice-bar {
+        flex-direction: row;
+        top: calc(56px + env(safe-area-inset-top, 0px));
+    }
 }

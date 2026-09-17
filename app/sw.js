@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classic-fc-games-v12';
+const CACHE_NAME = 'classic-fc-games-v13';
 const urlsToCache = [
     './',
     './index.html',
@@ -15,6 +15,7 @@ const urlsToCache = [
     './js/ui.js',
     './js/mobile-touch.js',
     './js/mobile-app.js',
+    './js/online-multiplayer.js',
     './js/supabase-multiplayer.js',
     './js/dynamicaudio-min.js'
 ];

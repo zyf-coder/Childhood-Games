@@ -76,10 +76,23 @@ JSNES.prototype = {
         if (this.rom !== null && this.rom.valid) {
             if (!this.isRunning) {
                 this.isRunning = true;
-
-                this.frameInterval = setInterval(function () {
-                    self.frame();
-                }, this.frameTime);
+                this._lastFrameTime = performance.now();
+                this._rafId = requestAnimationFrame(function loop(now) {
+                    if (!self.isRunning) return;
+                    var elapsed = now - self._lastFrameTime;
+                    if (elapsed > self.frameTime * 4) {
+                        self._lastFrameTime = now;
+                        elapsed = 0;
+                    }
+                    var steps = 0;
+                    while (elapsed >= self.frameTime && steps < 3) {
+                        self.frame();
+                        self._lastFrameTime += self.frameTime;
+                        elapsed = now - self._lastFrameTime;
+                        steps++;
+                    }
+                    self._rafId = requestAnimationFrame(loop);
+                });
                 this.resetFps();
                 this.printFps();
                 this.fpsInterval = setInterval(function () {
@@ -166,9 +179,12 @@ JSNES.prototype = {
     },
 
     stop: function () {
-        clearInterval(this.frameInterval);
-        clearInterval(this.fpsInterval);
         this.isRunning = false;
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+        clearInterval(this.fpsInterval);
     },
 
     reloadRom: function () {
