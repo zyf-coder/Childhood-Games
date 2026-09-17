@@ -4,7 +4,8 @@
   "description": "FC Games Online Server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "self-check": "node self-check.js"
   },
   "dependencies": {
     "ws": "^8.14.2"
