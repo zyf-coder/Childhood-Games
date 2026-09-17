@@ -285,8 +285,16 @@
     function initOnline() {
         if (typeof OnlineMultiplayer === 'undefined') return;
         onlineMultiplayer = new OnlineMultiplayer();
+        onlineMultiplayer.onConnectionChange = function(online) {
+            console.log('[online] status', online ? 'online' : 'offline');
+            updateLobbyConnStatus(online);
+            if (online && document.getElementById('onlineLobbyPage').classList.contains('active')) {
+                refreshRooms(true);
+            }
+        };
         onlineMultiplayer.connect(window.REALTIME_SERVER_URL || 'wss://ws.onlyforus.online').catch(function() {
-            showMessage('实时服务器连接失败', 'error');
+            console.warn('[online] initial connect failed, will retry');
+            updateLobbyConnStatus(false);
         });
 
         var sel = document.getElementById('gameSelectOnline');
@@ -371,6 +379,7 @@
             roomListRefreshTimer = null;
         }
         if (id === 'onlineLobbyPage') {
+            updateLobbyConnStatus(onlineMultiplayer && onlineMultiplayer.isConnected);
             if (isRoomListVisible()) refreshRooms();
             roomListRefreshTimer = setInterval(function() {
                 if (isRoomListVisible()) refreshRooms(true);
@@ -603,8 +612,8 @@
         var name = localStorage.getItem('playerNickname');
         if (!game) { showMessage('请选择游戏', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
-            showMessage('服务器未连接，请稍后重试', 'error');
+        if (!onlineMultiplayer) {
+            showMessage('联机模块未就绪', 'error');
             return;
         }
 
@@ -613,14 +622,25 @@
             button.dataset.originalText = button.textContent;
             button.textContent = '创建中...';
         }
-        var ok = onlineMultiplayer.createRoom(game, name);
-        if (!ok) showMessage('创建失败', 'error');
-        if (button) {
-            setTimeout(function() {
-                button.disabled = false;
-                button.textContent = button.dataset.originalText || '创建房间';
-            }, 800);
+
+        function restore() {
+            if (!button) return;
+            button.disabled = false;
+            button.textContent = button.dataset.originalText || '创建房间';
         }
+
+        onlineMultiplayer.ensureConnected().then(function() {
+            var ok = onlineMultiplayer.createRoom(game, name);
+            if (!ok) {
+                showMessage('创建失败，请重试', 'error');
+                restore();
+            } else {
+                setTimeout(restore, 800);
+            }
+        }).catch(function() {
+            showMessage('实时服务器连接失败，请检查网络后重试', 'error');
+            restore();
+        });
     }
 
     function joinRoom() {
@@ -628,12 +648,31 @@
         var name = localStorage.getItem('playerNickname');
         if (!id || id.length !== 6) { showMessage('请输入6位房间号', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
-            showMessage('服务器未连接，请稍后重试', 'error');
+        if (!onlineMultiplayer) {
+            showMessage('联机模块未就绪', 'error');
             return;
         }
-        var ok = onlineMultiplayer.joinRoom(id, name);
-        if (!ok) showMessage('加入失败', 'error');
+        onlineMultiplayer.ensureConnected().then(function() {
+            var ok = onlineMultiplayer.joinRoom(id, name);
+            if (!ok) showMessage('加入失败，请重试', 'error');
+        }).catch(function() {
+            showMessage('实时服务器连接失败，请检查网络后重试', 'error');
+        });
+    }
+
+    function updateLobbyConnStatus(online) {
+        var el = document.getElementById('lobbyConnStatus');
+        if (!el) return;
+        el.classList.remove('online', 'offline');
+        if (online === true) {
+            el.textContent = '已连接';
+            el.classList.add('online');
+        } else if (online === false) {
+            el.textContent = '服务器断开';
+            el.classList.add('offline');
+        } else {
+            el.textContent = '连接中…';
+        }
     }
 
     async function refreshRooms(silent) {
@@ -643,16 +682,22 @@
         if (!silent) list.innerHTML = '<div class="room-list-empty">加载中...</div>';
 
         try {
+            if (!onlineMultiplayer.isConnected) {
+                await onlineMultiplayer.ensureConnected();
+            }
+            updateLobbyConnStatus(true);
             var rooms = await onlineMultiplayer.getRoomList();
             if (!rooms || !rooms.length) {
-                list.innerHTML = '<div class="room-list-empty">暂无房间</div>';
+                list.innerHTML = '<div class="room-list-empty">暂无房间，快去创建吧</div>';
                 return;
             }
             list.innerHTML = rooms.map(function(r) {
                 return '<div class="room-item"><div class="room-item-info"><div class="room-item-game">' + r.game + '</div><div class="room-item-id">房间号: ' + r.id + '</div><div class="room-item-host">' + (r.player1 || '') + '</div></div><button class="room-item-join" onclick="window._join(\'' + r.id + '\')">加入</button></div>';
             }).join('');
         } catch(e) {
-            if (!silent) list.innerHTML = '<div class="room-list-empty">加载失败</div>';
+            updateLobbyConnStatus(false);
+            list.innerHTML = '<div class="room-list-empty">服务器未连接<br><span style="font-size:12px;color:#94a3b8">请检查服务器是否已启动，或稍后点「刷新列表」</span></div>';
+            if (!silent) showMessage('实时服务器连接失败', 'error');
         } finally {
             roomListRefreshPending = false;
         }
@@ -661,11 +706,12 @@
     window._join = async function(id) {
         var name = localStorage.getItem('playerNickname');
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer || !onlineMultiplayer.isConnected) {
-            showMessage('服务器未连接', 'error');
-            return;
-        }
-        onlineMultiplayer.joinRoom(id, name);
+        if (!onlineMultiplayer) return;
+        onlineMultiplayer.ensureConnected().then(function() {
+            onlineMultiplayer.joinRoom(id, name);
+        }).catch(function() {
+            showMessage('实时服务器连接失败', 'error');
+        });
     };
 
     function showRoom(id, isHost, hostName) {
@@ -898,7 +944,7 @@
 
     function checkUpdate() {
         showMessage('正在检查更新...', 'info');
-        fetch('https://raw.githubusercontent.com/zyf-coder/classic-fc-games/main/app/version.json?t=' + Date.now())
+        fetch('https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main/app/version.json?t=' + Date.now())
             .then(function(r) { return r.json(); })
             .then(function(remote) {
                 var local = APP_VERSION.split('.').map(Number);

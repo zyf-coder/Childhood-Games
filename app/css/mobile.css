@@ -595,6 +595,24 @@ html, body {
 
 .lobby-header h2 { flex: 1; font-size: 18px; }
 .lobby-nickname { font-size: 13px; color: var(--primary); }
+.lobby-conn {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.2);
+    color: #94a3b8;
+    border: 1px solid rgba(148,163,184,0.35);
+}
+.lobby-conn.online {
+    background: rgba(5,150,105,0.25);
+    color: #6ee7b7;
+    border-color: rgba(110,231,183,0.45);
+}
+.lobby-conn.offline {
+    background: rgba(239,68,68,0.2);
+    color: #fca5a5;
+    border-color: rgba(252,165,165,0.45);
+}
 
 .online-tabs {
     display: flex;
