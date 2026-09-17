@@ -292,7 +292,7 @@
                 refreshRooms(true);
             }
         };
-        onlineMultiplayer.connect(window.REALTIME_SERVER_URL || 'wss://ws.onlyforus.online').catch(function() {
+        onlineMultiplayer.connect(window.REALTIME_SERVER_URL || 'wss://coming-pad-kinda-joyce.trycloudflare.com').catch(function() {
             console.warn('[online] initial connect failed, will retry');
             updateLobbyConnStatus(false);
         });

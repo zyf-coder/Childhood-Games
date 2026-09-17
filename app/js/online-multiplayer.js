@@ -30,7 +30,7 @@ class OnlineMultiplayer {
     connect(serverUrl) {
         if (serverUrl) this.serverUrl = serverUrl;
         if (!this.serverUrl) {
-            this.serverUrl = 'wss://ws.onlyforus.online';
+            this.serverUrl = 'wss://coming-pad-kinda-joyce.trycloudflare.com';
         }
         this.httpUrl = this.wsToHttp(this.serverUrl);
         this.shouldReconnect = true;
@@ -261,7 +261,7 @@ class OnlineMultiplayer {
     }
 
     async getRoomList() {
-        var url = window.REALTIME_HTTP_URL || (this.httpUrl ? this.httpUrl + '/rooms' : 'https://ws.onlyforus.online/rooms');
+        var url = window.REALTIME_HTTP_URL || (this.httpUrl ? this.httpUrl + '/rooms' : 'https://coming-pad-kinda-joyce.trycloudflare.com/rooms');
         try {
             var response = await fetch(url, { cache: 'no-store' });
             if (!response.ok) throw new Error('HTTP ' + response.status);
