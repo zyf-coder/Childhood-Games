@@ -1,7 +1,7 @@
 {
-  "version": "1.7.12",
-  "versionCode": 45,
+  "version": "1.7.13",
+  "versionCode": 46,
   "downloadUrl": "https://onlyforus.online/Childhood-Games.apk",
   "githubDownloadUrl": "https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main/Childhood-Games.apk",
-  "notes": "修复损坏主逻辑；稳定画面帧循环；优化手柄布局；游戏内麦克风/扬声器；联机输入合并降延迟"
+  "notes": "新增 homebrew 游戏；进游戏可选单机/联机（单机不联网）；加大手柄热区"
 }

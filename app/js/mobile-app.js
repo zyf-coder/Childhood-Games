@@ -2,7 +2,7 @@
  * 移动端应用 v1.7.12
  */
 (function() {
-    var APP_VERSION = "1.7.12";
+    var APP_VERSION = "1.7.13";
     var DOWNLOAD_CONFIG = {
         primaryDomain: 'https://onlyforus.online',
         fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main',
@@ -29,7 +29,13 @@
         { name: '西游记', file: 'xyj1.nes', icon: '🐒' },
         { name: '马戏团', file: 'ma.nes', icon: '🎪' },
         { name: '忍者蛙与双截龙', file: 'rjbq.nes', icon: '🐉' },
-        { name: '洛克人', file: '3.nes', icon: '🤖' }
+        { name: '洛克人', file: '3.nes', icon: '🤖' },
+        { name: '火线冲突', file: 'Cross Fire (J).nes', icon: '💥' },
+        { name: '淘金者锦标赛', file: 'Championship Lode Runner (J).nes', icon: '⛏️' },
+        { name: '沙罗曼蛇U', file: 'Lifeforce (U).nes', icon: '☄️' },
+        { name: '机器人快跑', file: 'roborun.nes', icon: '🦾' },
+        { name: '坠落方块', file: 'falling.nes', icon: '🧱' },
+        { name: '波形实验室', file: 'Waveforms.nes', icon: '🎵' }
     ];
 
     var nes = null;
@@ -50,6 +56,8 @@
     var pendingNetInputs = [];
     var lastNetInput = {};
     var layoutRaf = 0;
+    var playMode = 'solo'; // solo | online
+    var onlineReady = false;
 
     function getDeviceId() {
         var id = localStorage.getItem('device-id');
@@ -112,9 +120,48 @@
             var card = document.createElement('div');
             card.className = 'game-card';
             card.innerHTML = '<div class="game-icon">' + game.icon + '</div><div class="game-name">' + game.name + '</div>';
-            card.onclick = function() { startGame(game); };
+            card.onclick = function() { showModeDialog(game); };
             grid.appendChild(card);
         });
+    }
+
+    function showModeDialog(game) {
+        var old = document.getElementById('modeDialog');
+        if (old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'modeDialog';
+        overlay.className = 'dialog-overlay visible';
+        overlay.innerHTML =
+            '<div class="dialog-box">' +
+            '<div class="dialog-title">' + game.icon + ' ' + game.name + '</div>' +
+            '<p style="text-align:center;color:var(--text-secondary);font-size:13px;margin-bottom:16px;">选择游玩方式</p>' +
+            '<button class="menu-btn" id="modeSoloBtn" style="background:#059669;color:#fff;">单机游玩</button>' +
+            '<button class="menu-btn" id="modeOnlineBtn">联机对战</button>' +
+            '<div class="dialog-actions" style="margin-top:12px;"><button class="dialog-btn dialog-btn-cancel" id="modeCancelBtn">取消</button></div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+        document.getElementById('modeCancelBtn').onclick = function() { overlay.remove(); };
+        document.getElementById('modeSoloBtn').onclick = function() {
+            overlay.remove();
+            playMode = 'solo';
+            startGame(game, 'solo');
+        };
+        document.getElementById('modeOnlineBtn').onclick = function() {
+            overlay.remove();
+            playMode = 'online';
+            if (!localStorage.getItem('playerNickname')) {
+                showNickname();
+                return;
+            }
+            showPage('onlineLobbyPage');
+            ensureOnline().then(function() {
+                updateLobbyConnStatus(true);
+                refreshRooms();
+            }).catch(function() {
+                updateLobbyConnStatus(false);
+                showMessage('联机服务器连接失败', 'error');
+            });
+        };
     }
 
     function initEvents() {
@@ -196,22 +243,47 @@
             var btn = document.getElementById(id);
             if (!btn) return;
             var key = keys[id];
+            var pressed = false;
+            var touchId = null;
+
+            function down(e, idOrNull) {
+                if (pressed) return;
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+                pressed = true;
+                touchId = idOrNull;
+                setGameInput(key, 0x41);
+                btn.classList.add('is-press');
+                if (navigator.vibrate) navigator.vibrate(8);
+            }
+            function up(e) {
+                if (!pressed) return;
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+                pressed = false;
+                touchId = null;
+                setGameInput(key, 0x40);
+                btn.classList.remove('is-press');
+            }
 
             btn.addEventListener('touchstart', function(e) {
-                e.preventDefault();
-                setGameInput(key, 0x41);
+                var t = e.changedTouches[0];
+                down(e, t && t.identifier);
             }, { passive: false });
             btn.addEventListener('touchend', function(e) {
-                e.preventDefault();
-                setGameInput(key, 0x40);
+                if (touchId !== null) {
+                    for (var i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) { up(e); return; }
+                    }
+                    return;
+                }
+                up(e);
             }, { passive: false });
-            btn.addEventListener('touchcancel', function(e) {
-                e.preventDefault();
-                setGameInput(key, 0x40);
-            }, { passive: false });
-            btn.addEventListener('mousedown', function() { setGameInput(key, 0x41); });
-            btn.addEventListener('mouseup', function() { setGameInput(key, 0x40); });
-            btn.addEventListener('mouseleave', function() { setGameInput(key, 0x40); });
+            btn.addEventListener('touchcancel', up, { passive: false });
+            btn.addEventListener('mousedown', function(e) { if (e.button === 0) down(e, null); });
+            btn.addEventListener('mouseup', up);
+            btn.addEventListener('mouseleave', up);
+            btn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
         });
     }
 
@@ -225,7 +297,8 @@
 
     function setGameInput(key, value) {
         applyLocalInput(key, value);
-        if (!onlineRoomId || !onlineMultiplayer) return;
+        // 单机模式：绝不发网络
+        if (playMode !== 'online' || !onlineRoomId || !onlineMultiplayer) return;
         if (lastNetInput[key] === value) return;
         lastNetInput[key] = value;
         pendingNetInputs.push({ key: key, value: value });
@@ -283,86 +356,93 @@
     }
 
     function initOnline() {
-        if (typeof OnlineMultiplayer === 'undefined') return;
-        onlineMultiplayer = new OnlineMultiplayer();
-        onlineMultiplayer.onConnectionChange = function(online) {
-            console.log('[online] status', online ? 'online' : 'offline');
-            updateLobbyConnStatus(online);
-            if (online && document.getElementById('onlineLobbyPage').classList.contains('active')) {
-                refreshRooms(true);
-            }
-        };
-        onlineMultiplayer.connect(window.REALTIME_SERVER_URL || 'wss://coming-pad-kinda-joyce.trycloudflare.com').catch(function() {
-            console.warn('[online] initial connect failed, will retry');
-            updateLobbyConnStatus(false);
-        });
+        // 单机启动时不连任何服务器；进入「联机」流程再连
+        onlineReady = false;
+    }
 
-        var sel = document.getElementById('gameSelectOnline');
-        if (sel) {
-            sel.innerHTML = '<option value="">请选择游戏</option>';
-            GAMES.forEach(function(g) {
-                var opt = document.createElement('option');
-                opt.value = g.name;
-                opt.textContent = g.name;
-                sel.appendChild(opt);
-            });
-        }
-
-        onlineMultiplayer.onRoomCreated = function(id) {
-            onlineRoomId = id;
-            onlinePlayerId = 1;
-            showRoom(id, true);
-        };
-        onlineMultiplayer.onRoomJoined = function(d) {
-            onlineRoomId = d.roomId;
-            onlinePlayerId = d.playerId;
-            showRoom(d.roomId, false, d.hostName);
-        };
-        onlineMultiplayer.onPlayerJoined = function(d) {
-            document.getElementById('roomPlayer2').textContent = d.playerName || '玩家2';
-            var btn = document.getElementById('startGameBtn');
-            if (btn) { btn.disabled = false; btn.textContent = '开始游戏'; }
-            addChat('系统', d.playerName + ' 加入了房间');
-        };
-        onlineMultiplayer.onPlayerLeft = function(d) {
-            var departedPlayerId = d && d.playerId;
-            if (departedPlayerId === 1 && onlinePlayerId === 2) {
-                stopVoiceChat(false);
-                try { onlineMultiplayer.leaveRoom(); } catch (e) {}
-                onlineRoomId = null;
-                onlinePlayerId = null;
-                showMessage('房主已退出，房间已销毁', 'warning');
-                showPage('onlineLobbyPage');
-                return;
+    function ensureOnline() {
+        if (onlineReady && onlineMultiplayer) return Promise.resolve();
+        if (!onlineReady) {
+            if (typeof OnlineMultiplayer === 'undefined') {
+                return Promise.reject(new Error('联机模块未就绪'));
             }
-            addChat('系统', '对手已离开房间');
-            document.getElementById('roomPlayer2').textContent = '等待中...';
-            var btn = document.getElementById('startGameBtn');
-            if (btn) { btn.disabled = true; btn.textContent = '等待对手加入...'; }
-        };
-        onlineMultiplayer.onChatMessage = function(d) { addChat(d.playerName, d.message); };
-        onlineMultiplayer.onPlayerInput = function(input, playerId) {
-            if (!nes || !nes.keyboard || !input) return;
-            var state = playerId === 2 ? nes.keyboard.state2 : nes.keyboard.state1;
-            var keys = nes.keyboard.keys;
-            if (input.keys && input.keys.length) {
-                input.keys.forEach(function(item) {
-                    if (item && Object.prototype.hasOwnProperty.call(keys, item.key)) {
-                        state[keys[item.key]] = item.value;
-                    }
+            onlineMultiplayer = new OnlineMultiplayer();
+            onlineMultiplayer.onConnectionChange = function(online) {
+                console.log('[online] status', online ? 'online' : 'offline');
+                updateLobbyConnStatus(online);
+                if (online && document.getElementById('onlineLobbyPage').classList.contains('active')) {
+                    refreshRooms(true);
+                }
+            };
+            onlineMultiplayer.onRoomCreated = function(id) {
+                onlineRoomId = id;
+                onlinePlayerId = 1;
+                showRoom(id, true);
+            };
+            onlineMultiplayer.onRoomJoined = function(d) {
+                onlineRoomId = d.roomId;
+                onlinePlayerId = d.playerId;
+                showRoom(d.roomId, false, d.hostName);
+            };
+            onlineMultiplayer.onPlayerJoined = function(d) {
+                document.getElementById('roomPlayer2').textContent = d.playerName || '玩家2';
+                var btn = document.getElementById('startGameBtn');
+                if (btn) { btn.disabled = false; btn.textContent = '开始游戏'; }
+                addChat('系统', d.playerName + ' 加入了房间');
+            };
+            onlineMultiplayer.onPlayerLeft = function(d) {
+                var departedPlayerId = d && d.playerId;
+                if (departedPlayerId === 1 && onlinePlayerId === 2) {
+                    stopVoiceChat(false);
+                    try { onlineMultiplayer.leaveRoom(); } catch (e) {}
+                    onlineRoomId = null;
+                    onlinePlayerId = null;
+                    showMessage('房主已退出，房间已销毁', 'warning');
+                    showPage('onlineLobbyPage');
+                    return;
+                }
+                addChat('系统', '对手已离开房间');
+                document.getElementById('roomPlayer2').textContent = '等待中...';
+                var btn = document.getElementById('startGameBtn');
+                if (btn) { btn.disabled = true; btn.textContent = '等待对手加入...'; }
+            };
+            onlineMultiplayer.onChatMessage = function(d) { addChat(d.playerName, d.message); };
+            onlineMultiplayer.onPlayerInput = function(input, playerId) {
+                if (!nes || !nes.keyboard || !input) return;
+                var state = playerId === 2 ? nes.keyboard.state2 : nes.keyboard.state1;
+                var keys = nes.keyboard.keys;
+                if (input.keys && input.keys.length) {
+                    input.keys.forEach(function(item) {
+                        if (item && Object.prototype.hasOwnProperty.call(keys, item.key)) {
+                            state[keys[item.key]] = item.value;
+                        }
+                    });
+                    return;
+                }
+                if (Object.prototype.hasOwnProperty.call(keys, input.key)) {
+                    state[keys[input.key]] = input.value;
+                }
+            };
+            onlineMultiplayer.onGameStart = function(d) {
+                var game = GAMES.find(function(g) { return g.name === d.game; });
+                if (game) startGame(game, 'online');
+            };
+            onlineMultiplayer.onVoiceSignal = handleVoiceSignal;
+            onlineMultiplayer.onError = function(m) { showMessage(m, 'error'); };
+
+            var sel = document.getElementById('gameSelectOnline');
+            if (sel && !sel.options.length) {
+                sel.innerHTML = '<option value="">请选择游戏</option>';
+                GAMES.forEach(function(g) {
+                    var opt = document.createElement('option');
+                    opt.value = g.name;
+                    opt.textContent = g.name;
+                    sel.appendChild(opt);
                 });
-                return;
             }
-            if (Object.prototype.hasOwnProperty.call(keys, input.key)) {
-                state[keys[input.key]] = input.value;
-            }
-        };
-        onlineMultiplayer.onGameStart = function(d) {
-            var game = GAMES.find(function(g) { return g.name === d.game; });
-            if (game) startGame(game);
-        };
-        onlineMultiplayer.onVoiceSignal = handleVoiceSignal;
-        onlineMultiplayer.onError = function(m) { showMessage(m, 'error'); };
+            onlineReady = true;
+        }
+        return onlineMultiplayer.ensureConnected();
     }
 
     function showPage(id) {
@@ -380,10 +460,16 @@
         }
         if (id === 'onlineLobbyPage') {
             updateLobbyConnStatus(onlineMultiplayer && onlineMultiplayer.isConnected);
-            if (isRoomListVisible()) refreshRooms();
+            ensureOnline().then(function() {
+                updateLobbyConnStatus(true);
+                if (isRoomListVisible()) refreshRooms();
+            }).catch(function() {
+                updateLobbyConnStatus(false);
+                if (isRoomListVisible()) refreshRooms();
+            });
             roomListRefreshTimer = setInterval(function() {
                 if (isRoomListVisible()) refreshRooms(true);
-            }, 2000);
+            }, 3000);
             var nick = document.getElementById('lobbyNickname');
             if (nick) nick.textContent = localStorage.getItem('playerNickname') || '';
         }
@@ -393,7 +479,8 @@
         }
     }
 
-    function startGame(game) {
+    function startGame(game, mode) {
+        playMode = mode === 'online' ? 'online' : 'solo';
         currentGame = game;
         if (mainBgm) mainBgm.pause();
 
@@ -401,8 +488,12 @@
         document.getElementById('gamePage').classList.add('active');
         var escHint = document.getElementById('escHint');
         if (escHint) escHint.style.display = 'block';
-        document.getElementById('gameTitle').textContent = game.name;
+        document.getElementById('gameTitle').textContent = game.name + (playMode === 'online' ? ' · 联机' : ' · 单机');
         document.getElementById('bottomTabs').style.display = 'none';
+        var micBtn = document.getElementById('gameMicBtn');
+        if (micBtn) micBtn.style.display = playMode === 'online' ? '' : 'none';
+        var spkBtn = document.getElementById('gameSpkBtn');
+        if (spkBtn) spkBtn.style.display = playMode === 'online' ? '' : 'none';
 
         setGameOrientation('landscape');
         showGameHeader();
@@ -612,10 +703,6 @@
         var name = localStorage.getItem('playerNickname');
         if (!game) { showMessage('请选择游戏', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer) {
-            showMessage('联机模块未就绪', 'error');
-            return;
-        }
 
         if (button) {
             button.disabled = true;
@@ -629,7 +716,8 @@
             button.textContent = button.dataset.originalText || '创建房间';
         }
 
-        onlineMultiplayer.ensureConnected().then(function() {
+        ensureOnline().then(function() {
+            updateLobbyConnStatus(true);
             var ok = onlineMultiplayer.createRoom(game, name);
             if (!ok) {
                 showMessage('创建失败，请重试', 'error');
@@ -638,6 +726,7 @@
                 setTimeout(restore, 800);
             }
         }).catch(function() {
+            updateLobbyConnStatus(false);
             showMessage('实时服务器连接失败，请检查网络后重试', 'error');
             restore();
         });
@@ -648,14 +737,12 @@
         var name = localStorage.getItem('playerNickname');
         if (!id || id.length !== 6) { showMessage('请输入6位房间号', 'warning'); return; }
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer) {
-            showMessage('联机模块未就绪', 'error');
-            return;
-        }
-        onlineMultiplayer.ensureConnected().then(function() {
+        ensureOnline().then(function() {
+            updateLobbyConnStatus(true);
             var ok = onlineMultiplayer.joinRoom(id, name);
             if (!ok) showMessage('加入失败，请重试', 'error');
         }).catch(function() {
+            updateLobbyConnStatus(false);
             showMessage('实时服务器连接失败，请检查网络后重试', 'error');
         });
     }
@@ -682,9 +769,7 @@
         if (!silent) list.innerHTML = '<div class="room-list-empty">加载中...</div>';
 
         try {
-            if (!onlineMultiplayer.isConnected) {
-                await onlineMultiplayer.ensureConnected();
-            }
+            await ensureOnline();
             updateLobbyConnStatus(true);
             var rooms = await onlineMultiplayer.getRoomList();
             if (!rooms || !rooms.length) {
@@ -706,8 +791,7 @@
     window._join = async function(id) {
         var name = localStorage.getItem('playerNickname');
         if (!name) { showNickname(); return; }
-        if (!onlineMultiplayer) return;
-        onlineMultiplayer.ensureConnected().then(function() {
+        ensureOnline().then(function() {
             onlineMultiplayer.joinRoom(id, name);
         }).catch(function() {
             showMessage('实时服务器连接失败', 'error');
@@ -769,7 +853,7 @@
         var g = GAMES.find(function(x) { return x.name === game; });
         if (g) {
             onlineMultiplayer.sendGameStart(g.name);
-            startGame(g);
+            startGame(g, 'online');
         }
     }
 
@@ -786,6 +870,7 @@
     }
 
     async function toggleVoiceChat() {
+        if (playMode !== 'online') { showMessage('单机模式无需语音', 'info'); return; }
         if (!onlineRoomId) { showMessage('请先进入联机房间', 'warning'); return; }
         if (voiceStream) { stopVoiceChat(); return; }
         try {

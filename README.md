@@ -170,6 +170,7 @@ classic-fc-games/
 ## 🙏 致谢
 
 - [JSNES](https://github.com/bfirsh/jsnes) - JavaScript NES 模拟器
+- 开源 Homebrew：RoboRun-NES、Falling、NES Waveforms 等作者
 - 所有经典游戏的原开发者
 
 ## 📮 联系方式
