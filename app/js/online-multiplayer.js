@@ -30,7 +30,7 @@ class OnlineMultiplayer {
     connect(serverUrl) {
         if (serverUrl) this.serverUrl = serverUrl;
         if (!this.serverUrl) {
-            this.serverUrl = 'wss://coming-pad-kinda-joyce.trycloudflare.com';
+            this.serverUrl = 'wss://lawyer-district-ancient-york.trycloudflare.com';
         }
         this.httpUrl = this.wsToHttp(this.serverUrl);
         this.shouldReconnect = true;
@@ -147,15 +147,10 @@ class OnlineMultiplayer {
     _scheduleReconnect() {
         if (!this.shouldReconnect || !this.serverUrl) return;
         if (this.reconnectTimer) return;
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            if (!this._notifiedOffline) {
-                this._notifiedOffline = true;
-                if (this.onError) this.onError('实时服务器暂不可用，请稍后在房间页重试');
-            }
-            return;
-        }
-        this.reconnectAttempts++;
-        var delay = Math.min(1000 * this.reconnectAttempts, 8000);
+        // 到达上限后改为慢速长轮询，不再弹错
+        var slow = this.reconnectAttempts >= this.maxReconnectAttempts;
+        if (!slow) this.reconnectAttempts++;
+        var delay = slow ? 15000 : Math.min(1000 * this.reconnectAttempts, 8000);
         var self = this;
         console.log('[online] reconnect', this.reconnectAttempts + '/' + this.maxReconnectAttempts, 'in', delay + 'ms');
         this.reconnectTimer = setTimeout(function() {
@@ -261,7 +256,7 @@ class OnlineMultiplayer {
     }
 
     async getRoomList() {
-        var url = window.REALTIME_HTTP_URL || (this.httpUrl ? this.httpUrl + '/rooms' : 'https://coming-pad-kinda-joyce.trycloudflare.com/rooms');
+        var url = window.REALTIME_HTTP_URL || (this.httpUrl ? this.httpUrl + '/rooms' : 'https://lawyer-district-ancient-york.trycloudflare.com/rooms');
         try {
             var response = await fetch(url, { cache: 'no-store' });
             if (!response.ok) throw new Error('HTTP ' + response.status);

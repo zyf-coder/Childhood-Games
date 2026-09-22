@@ -2,7 +2,7 @@
  * 移动端应用 v1.7.12
  */
 (function() {
-    var APP_VERSION = "1.7.13";
+    var APP_VERSION = "1.7.14";
     var DOWNLOAD_CONFIG = {
         primaryDomain: 'https://onlyforus.online',
         fallbackDomain: 'https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main',
@@ -35,7 +35,8 @@
         { name: '沙罗曼蛇U', file: 'Lifeforce (U).nes', icon: '☄️' },
         { name: '机器人快跑', file: 'roborun.nes', icon: '🦾' },
         { name: '坠落方块', file: 'falling.nes', icon: '🧱' },
-        { name: '波形实验室', file: 'Waveforms.nes', icon: '🎵' }
+        { name: '波形实验室', file: 'Waveforms.nes', icon: '🎵' },
+        { name: '植物大战僵尸', file: 'web:pvz.html', icon: '🌻', web: true }
     ];
 
     var nes = null;
@@ -147,6 +148,7 @@
             startGame(game, 'solo');
         };
         document.getElementById('modeOnlineBtn').onclick = function() {
+            if (game.web) { showMessage('该游戏仅支持单机', 'warning'); return; }
             overlay.remove();
             playMode = 'online';
             if (!localStorage.getItem('playerNickname')) {
@@ -434,6 +436,7 @@
             if (sel && !sel.options.length) {
                 sel.innerHTML = '<option value="">请选择游戏</option>';
                 GAMES.forEach(function(g) {
+                    if (g.web) return;
                     var opt = document.createElement('option');
                     opt.value = g.name;
                     opt.textContent = g.name;
@@ -491,9 +494,15 @@
         document.getElementById('gameTitle').textContent = game.name + (playMode === 'online' ? ' · 联机' : ' · 单机');
         document.getElementById('bottomTabs').style.display = 'none';
         var micBtn = document.getElementById('gameMicBtn');
-        if (micBtn) micBtn.style.display = playMode === 'online' ? '' : 'none';
+        if (micBtn) micBtn.style.display = (playMode === 'online' && !game.web) ? '' : 'none';
         var spkBtn = document.getElementById('gameSpkBtn');
-        if (spkBtn) spkBtn.style.display = playMode === 'online' ? '' : 'none';
+        if (spkBtn) spkBtn.style.display = (playMode === 'online' && !game.web) ? '' : 'none';
+        // 网页游戏隐藏虚拟手柄
+        var dpad = document.getElementById('dpadArea');
+        var right = document.querySelector('.right-controls');
+        var hidePad = !!game.web;
+        if (dpad) dpad.style.display = hidePad ? 'none' : '';
+        if (right) right.style.display = hidePad ? 'none' : '';
 
         setGameOrientation('landscape');
         showGameHeader();
@@ -501,9 +510,29 @@
         pendingNetInputs = [];
 
         setTimeout(function() {
-            loadROM(game.file);
+            if (game.web) {
+                loadWebGame(game.file.replace(/^web:/, ''));
+            } else {
+                loadROM(game.file);
+            }
             scheduleScreenLayout();
-        }, 300);
+        }, 150);
+    }
+
+    function loadWebGame(page) {
+        var emulator = document.getElementById('emulator');
+        emulator.innerHTML = '';
+        var frame = document.createElement('iframe');
+        frame.id = 'webGameFrame';
+        frame.src = 'games/' + page;
+        frame.style.cssText = 'width:100%;height:100%;border:0;background:#000;display:block';
+        emulator.appendChild(frame);
+        window.addEventListener('message', function onMsg(e) {
+            if (e.data && e.data.type === 'pvz-exit') {
+                window.removeEventListener('message', onMsg);
+                goBack();
+            }
+        });
     }
 
     function loadROM(file) {
@@ -851,6 +880,7 @@
         if (onlinePlayerId !== 1) return;
         var game = document.getElementById('gameSelectOnline').value || '超级玛丽';
         var g = GAMES.find(function(x) { return x.name === game; });
+        if (g && g.web) { showMessage('该游戏仅支持单机', 'warning'); return; }
         if (g) {
             onlineMultiplayer.sendGameStart(g.name);
             startGame(g, 'online');

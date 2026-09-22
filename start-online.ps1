@@ -36,13 +36,27 @@ for ($i = 0; $i -lt 20; $i++) {
 
 if (Test-Path $urlFile) {
     $tunnel = (Get-Content $urlFile).Trim()
+    $ws = 'wss://' + ($tunnel -replace '^https://','')
     Write-Host ''
     Write-Host '公网地址（手机可连）:' -ForegroundColor Green
-    Write-Host "  WebSocket: wss://$($tunnel -replace '^https://','')"
+    Write-Host "  WebSocket: $ws"
     Write-Host "  HTTP:      $tunnel"
     Write-Host "  健康检查:  $tunnel/health"
     Write-Host ''
-    Write-Host '把上面地址填进 app/index.html 的 REALTIME_SERVER_URL 后重打 APK。' -ForegroundColor Yellow
+
+    # 自动写回客户端配置
+    $html = Join-Path $root 'app\index.html'
+    $js = Join-Path $root 'app\js\online-multiplayer.js'
+    $txt = Get-Content $html -Raw
+    $txt = $txt -replace "window\.REALTIME_SERVER_URL = '[^']+'", "window.REALTIME_SERVER_URL = '$ws'"
+    $txt = $txt -replace "window\.REALTIME_HTTP_URL = '[^']+'", "window.REALTIME_HTTP_URL = '$tunnel'"
+    Set-Content -Path $html -Value $txt -Encoding UTF8
+    $txt2 = Get-Content $js -Raw
+    $txt2 = $txt2 -replace "wss://[a-z0-9-]+\.trycloudflare\.com", $ws
+    $txt2 = $txt2 -replace "https://[a-z0-9-]+\.trycloudflare\.com/rooms", "$tunnel/rooms"
+    Set-Content -Path $js -Value $txt2 -Encoding UTF8
+    Write-Host '已自动更新 app/index.html 与 online-multiplayer.js 中的服务器地址。' -ForegroundColor Green
+    Write-Host '请重新打 APK 后安装到手机。' -ForegroundColor Yellow
 } else {
     Write-Host '隧道启动超时，请查看 scripts/start-tunnel.js 输出' -ForegroundColor Red
 }

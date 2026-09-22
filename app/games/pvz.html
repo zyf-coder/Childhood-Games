@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>植物保卫战</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#1a3a1a;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;color:#fff;touch-action:none}
+#wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
+#top{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0f2a0f;z-index:5}
+#sun{font-size:18px;font-weight:700;color:#fbbf24;min-width:70px}
+#cards{display:flex;gap:6px;flex:1;overflow-x:auto}
+.card{width:54px;height:62px;border-radius:8px;background:#2d4a2d;border:2px solid #4a7a4a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.card.on{border-color:#fbbf24;background:#3d5a3d}
+.card.cool{opacity:.4}
+.card .ic{font-size:22px;line-height:1}
+.card .cost{font-size:10px;color:#fbbf24}
+#back{background:#333;border:none;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px}
+#canvasBox{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+canvas{display:block;image-rendering:pixelated;max-width:100%;max-height:100%;background:#3a7a3a}
+#msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);padding:24px 32px;border-radius:16px;display:none;z-index:10;text-align:center}
+#msg h2{margin-bottom:12px;font-size:22px}
+#msg button{margin-top:8px;padding:12px 24px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:16px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top">
+    <button id="back">返回</button>
+    <div id="sun">☀ 50</div>
+    <div id="cards"></div>
+  </div>
+  <div id="canvasBox"><canvas id="c" width="540" height="360"></canvas></div>
+  <div id="msg"><h2 id="msgTitle">游戏结束</h2><div id="msgText"></div><button id="msgBtn">再来一局</button></div>
+</div>
+<script>
+(function(){
+var COLS=6, ROWS=5, CW=80, CH=60, OX=60, OY=30;
+var PLANTS={
+  pea:{name:'豌豆',cost:100,icon:'🌱',hp:80,cool:5,rng:1,cd:1.2},
+  sun:{name:'向日葵',cost:50,icon:'🌻',hp:60,cool:5,rng:0,cd:0,sun:1},
+  nut:{name:'坚果',cost:50,icon:'🥜',hp:400,cool:8,rng:0,cd:0},
+  ice:{name:'冰豆',cost:175,icon:'❄️',hp:80,cool:8,rng:1,cd:1.5}
+};
+var order=['sun','pea','nut','ice'];
+var state, anim;
+
+function reset(){
+  state={
+    sun:150, plants:{}, bullets:[], zoms:[], suns:[], t:0, wave:0, nextWave:8,
+    sel:null, cool:{}, over:false, win:false, kills:0
+  };
+  order.forEach(function(k){state.cool[k]=0});
+  document.getElementById('msg').style.display='none';
+  renderCards();
+}
+
+function renderCards(){
+  var box=document.getElementById('cards'); box.innerHTML='';
+  order.forEach(function(k){
+    var p=PLANTS[k];
+    var d=document.createElement('div');
+    d.className='card'+(state.sel===k?' on':'')+(state.cool[k]>0?' cool':'');
+    d.innerHTML='<div class="ic">'+p.icon+'</div><div class="cost">'+p.cost+'</div>';
+    d.onclick=function(){
+      if(state.cool[k]>0||state.over) return;
+      state.sel = state.sel===k?null:k;
+      renderCards();
+    };
+    box.appendChild(d);
+  });
+}
+
+function plantAt(r,c){
+  if(!state.sel||state.over) return;
+  var key=r+'_'+c;
+  if(state.plants[key]) return;
+  var p=PLANTS[state.sel];
+  if(state.sun<p.cost||state.cool[state.sel]>0) return;
+  state.sun-=p.cost;
+  state.cool[state.sel]=p.cool;
+  state.plants[key]={type:state.sel,hp:p.hp,max:p.hp,cd:0};
+  state.sel=null;
+  renderCards();
+}
+
+function spawnZom(){
+  var r=Math.floor(Math.random()*ROWS);
+  var tough = state.wave>3 && Math.random()<0.25;
+  state.zoms.push({r:r,x:COLS*CW+OX+20,hp:tough?250:100,max:tough?250:100,spd:tough?0.45:0.7,eat:0,slow:0,tough:tough});
+}
+
+function update(dt){
+  if(state.over) return;
+  state.t+=dt;
+  state.nextWave-=dt;
+  if(state.nextWave<=0){
+    state.wave++;
+    var n=1+Math.floor(state.wave*0.6);
+    for(var i=0;i<n;i++) spawnZom();
+    state.nextWave=Math.max(6, 14-state.wave*0.5);
+    if(state.wave>=8 && state.zoms.length===0 && state.t>3){ /* continue until cleared */ }
+  }
+  // cooldowns
+  order.forEach(function(k){ if(state.cool[k]>0){ state.cool[k]=Math.max(0,state.cool[k]-dt); }});
+  // plants
+  for(var key in state.plants){
+    var pl=state.plants[key];
+    var parts=key.split('_'); var r=+parts[0], c=+parts[1];
+    var def=PLANTS[pl.type];
+    if(pl.type==='sun'){
+      pl.cd-=dt;
+      if(pl.cd<=0){
+        pl.cd=12;
+        state.suns.push({x:OX+c*CW+CW/2,y:OY+r*CH+CH/2,v:0,born:state.t});
+      }
+    } else if(def.rng){
+      pl.cd-=dt;
+      if(pl.cd<=0){
+        // fire if zombie on row
+        var has=false;
+        for(var i=0;i<state.zoms.length;i++){
+          if(state.zoms[i].r===r && state.zoms[i].x>OX+c*CW){has=true;break;}
+        }
+        if(has){
+          pl.cd=def.cd;
+          state.bullets.push({x:OX+c*CW+CW-10,y:OY+r*CH+CH/2,r:r,dmg:20,slow:pl.type==='ice'});
+        }
+      }
+    }
+  }
+  // free suns drop
+  if(Math.random()<dt*0.12){
+    state.suns.push({x:OX+20+Math.random()*(COLS*CW-40),y:OY+10,v:30,born:state.t});
+  }
+  // bullets
+  for(var i=state.bullets.length-1;i>=0;i--){
+    var b=state.bullets[i];
+    b.x+=220*dt;
+    var hit=false;
+    for(var j=state.zoms.length-1;j>=0;j--){
+      var z=state.zoms[j];
+      if(z.r===b.r && Math.abs(z.x-b.x)<18){
+        z.hp-=b.dmg;
+        if(b.slow) z.slow=2;
+        hit=true;
+        if(z.hp<=0){ state.zoms.splice(j,1); state.kills++; }
+        break;
+      }
+    }
+    if(hit||b.x>OX+COLS*CW+20) state.bullets.splice(i,1);
+  }
+  // zombies
+  for(var i=state.zoms.length-1;i>=0;i--){
+    var z=state.zoms[i];
+    if(z.slow>0) z.slow-=dt;
+    var sp=z.spd*(z.slow>0?0.5:1)*30;
+    // eat plant?
+    var col=Math.floor((z.x-OX)/CW);
+    var key=z.r+'_'+col;
+    var pl=state.plants[key];
+    if(pl && z.x<=OX+col*CW+CW-8 && z.x>OX+col*CW){
+      pl.hp-=25*dt;
+      z.eat+=dt;
+      if(pl.hp<=0) delete state.plants[key];
+    } else {
+      z.x-=sp*dt;
+    }
+    if(z.x<OX-10){
+      state.over=true; state.win=false;
+      showMsg('僵尸入侵了！','吃到脑子了…击杀 '+state.kills);
+      return;
+    }
+  }
+  // win check after wave 8 cleared
+  if(state.wave>=8 && state.zoms.length===0 && state.nextWave>5){
+    state.over=true; state.win=true;
+    showMsg('胜利！','防守成功，击杀 '+state.kills);
+  }
+  // suns fall
+  for(var i=state.suns.length-1;i>=0;i--){
+    var s=state.suns[i];
+    if(s.v>0){ s.y+=s.v*dt; if(s.y>OY+ROWS*CH-10) s.v=0; }
+  }
+}
+
+function showMsg(title, text){
+  document.getElementById('msgTitle').textContent=title;
+  document.getElementById('msgText').textContent=text;
+  document.getElementById('msg').style.display='block';
+}
+
+var c=document.getElementById('c'), ctx=c.getContext('2d');
+function draw(){
+  ctx.fillStyle='#3a7a3a'; ctx.fillRect(0,0,c.width,c.height);
+  // lawn
+  for(var r=0;r<ROWS;r++)for(var col=0;col<COLS;col++){
+    ctx.fillStyle=(r+col)%2?'#4a8a4a':'#3f7f3f';
+    ctx.fillRect(OX+col*CW, OY+r*CH, CW-1, CH-1);
+  }
+  // road
+  ctx.fillStyle='#6b5a4a'; ctx.fillRect(OX+COLS*CW, OY, 40, ROWS*CH);
+  // plants
+  for(var key in state.plants){
+    var pl=state.plants[key];
+    var parts=key.split('_'); var r=+parts[0], col=+parts[1];
+    var x=OX+col*CW+CW/2, y=OY+r*CH+CH/2;
+    ctx.font='28px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(PLANTS[pl.type].icon, x, y);
+    // hp bar
+    ctx.fillStyle='#111'; ctx.fillRect(x-18,y+18,36,4);
+    ctx.fillStyle='#22c55e'; ctx.fillRect(x-18,y+18,36*(pl.hp/pl.max),4);
+  }
+  // bullets
+  state.bullets.forEach(function(b){
+    ctx.fillStyle=b.slow?'#7dd3fc':'#86efac';
+    ctx.beginPath(); ctx.arc(b.x,b.y,5,0,Math.PI*2); ctx.fill();
+  });
+  // zombies
+  state.zoms.forEach(function(z){
+    var y=OY+z.r*CH+CH/2;
+    ctx.font='26px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(z.tough?'🧟':'🧟‍♂️', z.x, y);
+    ctx.fillStyle='#111'; ctx.fillRect(z.x-16,y-28,32,4);
+    ctx.fillStyle='#ef4444'; ctx.fillRect(z.x-16,y-28,32*(z.hp/z.max),4);
+    if(z.slow>0){ ctx.fillStyle='#7dd3fc'; ctx.fillRect(z.x-16,y-34,32,3); }
+  });
+  // suns
+  state.suns.forEach(function(s){
+    ctx.font='22px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('☀', s.x, s.y);
+  });
+  // HUD wave
+  ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(OX,4,180,22);
+  ctx.fillStyle='#fbbf24'; ctx.font='13px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText('波次 '+state.wave+'/8  击杀 '+state.kills, OX+8, 15);
+}
+
+function loop(ts){
+  if(!anim) anim=ts;
+  var dt=Math.min(0.05,(ts-anim)/1000); anim=ts;
+  update(dt);
+  draw();
+  document.getElementById('sun').textContent='☀ '+Math.floor(state.sun);
+  requestAnimationFrame(loop);
+}
+
+function hit(e){
+  var rect=c.getBoundingClientRect();
+  var sx=c.width/rect.width, sy=c.height/rect.height;
+  var x=(e.clientX-rect.left)*sx, y=(e.clientY-rect.top)*sy;
+  // sun collect
+  for(var i=state.suns.length-1;i>=0;i--){
+    var s=state.suns[i];
+    if(Math.abs(s.x-x)<28 && Math.abs(s.y-y)<28){
+      state.sun+=25; state.suns.splice(i,1); return;
+    }
+  }
+  var col=Math.floor((x-OX)/CW), r=Math.floor((y-OY)/CH);
+  if(r>=0&&r<ROWS&&col>=0&&col<COLS) plantAt(r,col);
+}
+
+c.addEventListener('pointerdown', function(e){ e.preventDefault(); hit(e); });
+document.getElementById('back').onclick=function(){ parent.postMessage({type:'pvz-exit'},'*'); };
+document.getElementById('msgBtn').onclick=function(){ reset(); };
+
+reset();
+requestAnimationFrame(loop);
+// 向日葵初始产阳光
+setInterval(function(){
+  if(state.over) return;
+  // auto sun from sky handled in update
+}, 1000);
+})();
+</script>
+</body>
+</html>

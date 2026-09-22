@@ -1,7 +1,7 @@
 {
-  "version": "1.7.13",
-  "versionCode": 46,
+  "version": "1.7.14",
+  "versionCode": 47,
   "downloadUrl": "https://onlyforus.online/Childhood-Games.apk",
   "githubDownloadUrl": "https://raw.githubusercontent.com/zyf-coder/Childhood-Games/main/Childhood-Games.apk",
-  "notes": "新增 homebrew 游戏；进游戏可选单机/联机（单机不联网）；加大手柄热区"
+  "notes": "植物大战僵尸玩法；修复联机断开误报；静默自动重连"
 }
